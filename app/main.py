@@ -124,6 +124,10 @@ st.markdown(f"""
 df = load_main_data()
 df_filtered = render_filters(df)
 
+rata_cols = {
+    'Teller': 'rata_teller', 'CS': 'rata_cs', 'ATM': 'rata_atm',
+    'Fisik': 'rata_fisik', 'Sekuriti': 'rata_sekuriti', 'Brand': 'rata_brand',
+}
 # ── HEADER ───────────────────────────────────────────────────
 st.markdown(f"""
 <div style="margin-bottom: 8px;">
@@ -160,34 +164,19 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 
 
 
-# ════════════════════════════════════════════════════════════
-# TAB 1 — SCORECARD
-# ════════════════════════════════════════════════════════════
-with tab1:
-    if len(df_filtered) == 0:
-        st.warning("Tidak ada data untuk filter yang dipilih.")
-        st.stop()
+# ── Letakkan ini DI ATAS with tab1: ──────────────────────────
+@st.cache_data
+def load_geojson_provinsi():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        'static', 'indonesia.geojson')
+    with open(path, 'r') as f:
+        return json.load(f)
 
-    render_kpi_scorecard(df_filtered)
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-
-    # ── PETA ─────────────────────────────────────────────────
-    st.markdown(f'<p class="section-title">Sebaran Responden per Provinsi</p>', unsafe_allow_html=True)
-
-    @st.cache_data
-    def load_geojson_provinsi():
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            'static', 'indonesia.geojson')
-        with open(path, 'r') as f:
-            return json.load(f)
-
-# Mapping nama provinsi dataset → GeoJSON
 PROV_MAP = {'DKI Jakarta': 'Jakarta Raya'}
 
-def render_peta(df_filtered):
+def render_peta(df_input):
     geojson = load_geojson_provinsi()
-    
-    df_prov = df_filtered.groupby('Provinsi').size().reset_index(name='Jumlah Responden')
+    df_prov = df_input.groupby('Provinsi').size().reset_index(name='Jumlah Responden')
     df_prov['NAME_1'] = df_prov['Provinsi'].replace(PROV_MAP)
 
     m = folium.Map(location=[-2.5, 118], zoom_start=5, tiles='CartoDB positron')
@@ -221,13 +210,27 @@ def render_peta(df_filtered):
 
     st_folium(m, width=None, height=400, returned_objects=[])
 
+
+# ════════════════════════════════════════════════════════════
+# TAB 1 — SCORECARD
+# ════════════════════════════════════════════════════════════
+with tab1:
+    if len(df_filtered) == 0:
+        st.warning("Tidak ada data untuk filter yang dipilih.")
+        st.stop()
+
+    render_kpi_scorecard(df_filtered)
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    # ── PETA ─────────────────────────────────────────────────
+    st.markdown(f'<p class="section-title">Sebaran Responden per Provinsi</p>', unsafe_allow_html=True)
+    render_peta(df_filtered)
+
     # ── Dimensi + NPS ────────────────────────────────────────
     col_dim, col_nps = st.columns([3, 2])
 
     with col_dim:
         st.markdown(f'<p class="section-title">Kepuasan per Dimensi Layanan</p>', unsafe_allow_html=True)
-        # Baris 1: Teller, CS, ATM
-        # Baris 2: Fisik, Sekuriti, Brand
         items = list(rata_cols.items())
         for baris in range(2):
             cols_3 = st.columns(3)
@@ -262,17 +265,16 @@ def render_peta(df_filtered):
     with col_nps:
         st.markdown(f'<p class="section-title">Distribusi NPS Nasabah</p>', unsafe_allow_html=True)
 
-        # Calculate NPS metrics
         nps_col = 'NPS' if 'NPS' in df_filtered.columns else None
         if nps_col:
-            promoters = (df_filtered[nps_col] >= 9).sum()
-            passives = ((df_filtered[nps_col] >= 7) & (df_filtered[nps_col] <= 8)).sum()
+            promoters  = (df_filtered[nps_col] >= 9).sum()
+            passives   = ((df_filtered[nps_col] >= 7) & (df_filtered[nps_col] <= 8)).sum()
             detractors = (df_filtered[nps_col] < 7).sum()
-            total = len(df_filtered)
-            pct_promoter = (promoters / total * 100) if total > 0 else 0
-            pct_passive = (passives / total * 100) if total > 0 else 0
+            total      = len(df_filtered)
+            pct_promoter  = (promoters  / total * 100) if total > 0 else 0
+            pct_passive   = (passives   / total * 100) if total > 0 else 0
             pct_detractor = (detractors / total * 100) if total > 0 else 0
-            nps_score = pct_promoter - pct_detractor
+            nps_score     = pct_promoter - pct_detractor
         else:
             pct_promoter = pct_passive = pct_detractor = nps_score = 0
 
@@ -300,10 +302,10 @@ def render_peta(df_filtered):
                        xanchor='center', x=0.5,
                        font=dict(family='Poppins', size=11))
         )
-
         with st.container(border=True):
             st.plotly_chart(fig_donut, use_container_width=True,
                config={'displayModeBar': False})
+
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # ── Distribusi ───────────────────────────────────────────
@@ -357,26 +359,26 @@ def render_peta(df_filtered):
 
     alert_items = []
     dimensi_kepentingan = {
-        'Teller': [c for c in df.columns if c.startswith('T_TL2_')],
-        'CS':     [c for c in df.columns if c.startswith('T_CS2_')],
-        'ATM':    [c for c in df.columns if c.startswith('T_AT2_')],
-        'Fisik':  [c for c in df.columns if c.startswith('T_KC1_')],
-        'Sekuriti': [c for c in df.columns if c.startswith('T_SC1_')],
-        'Brand':  [c for c in df.columns if c.startswith('T_C1A_')],
+        'Teller':    [c for c in df.columns if c.startswith('T_TL2_')],
+        'CS':        [c for c in df.columns if c.startswith('T_CS2_')],
+        'ATM':       [c for c in df.columns if c.startswith('T_AT2_')],
+        'Fisik':     [c for c in df.columns if c.startswith('T_KC1_')],
+        'Sekuriti':  [c for c in df.columns if c.startswith('T_SC1_')],
+        'Brand':     [c for c in df.columns if c.startswith('T_C1A_')],
     }
     dimensi_kepuasan = {
-        'Teller': [c for c in df.columns if c.startswith('T_TL3_') and int(c.split('_')[-1])%3==2],
-        'CS':     [c for c in df.columns if c.startswith('T_CS3_') and int(c.split('_')[-1])%3==2],
-        'ATM':    [c for c in df.columns if c.startswith('T_AT3_') and int(c.split('_')[-1])%3==2],
-        'Fisik':  [c for c in df.columns if c.startswith('T_KC2_') and int(c.split('_')[-1])%3==2],
-        'Sekuriti': [c for c in df.columns if c.startswith('T_SC2_') and int(c.split('_')[-1])%3==2],
-        'Brand':  [c for c in df.columns if c.startswith('T_C1B_') and int(c.split('_')[-1])%3==2],
+        'Teller':    [c for c in df.columns if c.startswith('T_TL3_') and int(c.split('_')[-1])%3==2],
+        'CS':        [c for c in df.columns if c.startswith('T_CS3_') and int(c.split('_')[-1])%3==2],
+        'ATM':       [c for c in df.columns if c.startswith('T_AT3_') and int(c.split('_')[-1])%3==2],
+        'Fisik':     [c for c in df.columns if c.startswith('T_KC2_') and int(c.split('_')[-1])%3==2],
+        'Sekuriti':  [c for c in df.columns if c.startswith('T_SC2_') and int(c.split('_')[-1])%3==2],
+        'Brand':     [c for c in df.columns if c.startswith('T_C1B_') and int(c.split('_')[-1])%3==2],
     }
 
     BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     df_raw = pd.read_excel(os.path.join(BASE,'data','raw',
                            'Deka_project_dataset_BankXYZ.xlsx'), header=0)
-    kode_var = df_raw.iloc[0]
+    kode_var  = df_raw.iloc[0]
     label_map = {str(v).strip(): str(k).strip()
                  for k,v in kode_var.items() if pd.notna(v)}
 
@@ -384,7 +386,7 @@ def render_peta(df_filtered):
         cols_k = dimensi_kepentingan[nama]
         cols_p = sorted(dimensi_kepuasan[nama], key=lambda x: int(x.split('_')[-1]))
         df_f = df_filtered[df_filtered['PANEL']=='Teller (KUOTA 50%)'] if nama=='Teller' else \
-               df_filtered[df_filtered['PANEL']=='CS (KUOTA 50%)'] if nama=='CS' else df_filtered
+               df_filtered[df_filtered['PANEL']=='CS (KUOTA 50%)']     if nama=='CS'     else df_filtered
         n = min(len(cols_k), len(cols_p))
         for i in range(n):
             mk = df_f[cols_k[i]].mean(skipna=True)
@@ -393,8 +395,8 @@ def render_peta(df_filtered):
                 alert_items.append({'dimensi':nama,'kolom_k':cols_k[i],
                                    'gap':mk-mp,'kepentingan':mk,'kepuasan':mp})
 
-    alert_items = sorted(alert_items, key=lambda x: -x['gap'])[:5]
-    warna_alert = [DANGER, '#F97316', WARNING, TEAL_MED, BLUE_MED]
+    alert_items  = sorted(alert_items, key=lambda x: -x['gap'])[:5]
+    warna_alert  = [DANGER, '#F97316', WARNING, TEAL_MED, BLUE_MED]
 
     for idx, item in enumerate(alert_items):
         label = label_map.get(item['kolom_k'], item['kolom_k'])[:70]
@@ -419,7 +421,6 @@ def render_peta(df_filtered):
                     Gap {item['gap']:.3f}</span>
             </div>
         </div>""", unsafe_allow_html=True)
-
 
 # ════════════════════════════════════════════════════════════
 # TAB 2-6 — PLACEHOLDER
@@ -605,10 +606,6 @@ with tab3:
     render_kpi_cabang(df_filtered)
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    rata_cols = {
-        'Teller': 'rata_teller', 'CS': 'rata_cs', 'ATM': 'rata_atm',
-        'Fisik': 'rata_fisik', 'Sekuriti': 'rata_sekuriti', 'Brand': 'rata_brand',
-    }
 
     # ── Top 5 & Bottom 5 Cabang ──────────────────────────────
     cabang_data = df_filtered.groupby('CABANG')[list(rata_cols.values())].mean().round(2)
