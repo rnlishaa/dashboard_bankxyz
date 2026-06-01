@@ -180,16 +180,18 @@ def render_peta(df_input):
     df_prov['NAME_1'] = df_prov['PROV'].replace(PROV_MAP)
 
     m = folium.Map(location=[-2.5, 118], zoom_start=5, tiles='CartoDB positron')
-    folium.Choropleth(
+    choropleth = folium.Choropleth(
         geo_data=geojson,
         name='choropleth',
         data=df_prov,
         columns=['NAME_1', 'Jumlah Responden'],
         key_on='feature.properties.NAME_1',
-        fill_color='YlOrRd',
-        fill_opacity=0.7,
+        fill_color='Blues',
+        fill_opacity=0.85,
         line_opacity=0.3,
-        legend_name='Jumlah Responden'
+        legend_name='Jumlah Responden',
+        nan_fill_color='#D6D6D6',
+        nan_fill_opacity=0.6,
     ).add_to(m)
 
     for _, row in df_prov.iterrows():
