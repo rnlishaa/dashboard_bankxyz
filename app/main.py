@@ -265,7 +265,7 @@ with tab1:
     with col_nps:
         st.markdown(f'<p class="section-title">Distribusi NPS Nasabah</p>', unsafe_allow_html=True)
 
-        nps_col = 'NPS' if 'NPS' in df_filtered.columns else None
+        nps_col = 'G1A' if 'G1A' in df_filtered.columns else None
         if nps_col:
             promoters  = (df_filtered[nps_col] >= 9).sum()
             passives   = ((df_filtered[nps_col] >= 7) & (df_filtered[nps_col] <= 8)).sum()
