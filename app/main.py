@@ -176,8 +176,8 @@ PROV_MAP = {'DKI Jakarta': 'Jakarta Raya'}
 
 def render_peta(df_input):
     geojson = load_geojson_provinsi()
-    df_prov = df_input.groupby('Provinsi').size().reset_index(name='Jumlah Responden')
-    df_prov['NAME_1'] = df_prov['Provinsi'].replace(PROV_MAP)
+    df_prov = df_input.groupby('PROV').size().reset_index(name='Jumlah Responden')
+    df_prov['NAME_1'] = df_prov['PROV'].replace(PROV_MAP)
 
     m = folium.Map(location=[-2.5, 118], zoom_start=5, tiles='CartoDB positron')
     folium.Choropleth(
