@@ -6,7 +6,7 @@ import plotly.express as px
 import pandas as pd
 import numpy as np
 import pickle
-import geopandas as gpd
+import json 
 import folium
 from streamlit_folium import st_folium
 
@@ -175,85 +175,51 @@ with tab1:
     st.markdown(f'<p class="section-title">Sebaran Responden per Provinsi</p>', unsafe_allow_html=True)
 
     @st.cache_data
-    def load_shp_provinsi():
-        shp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                'static', 'shp', 'gadm41_IDN_1.shp')
-        gdf = gpd.read_file(shp_path)
-        nama_map = {'Jakarta Raya': 'DKI Jakarta', 'Yogyakarta': 'DI Yogyakarta'}
-        gdf['NAME_1'] = gdf['NAME_1'].replace(nama_map)
-        return gdf
+    def load_geojson_provinsi():
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            'static', 'indonesia.geojson')
+        with open(path, 'r') as f:
+            return json.load(f)
 
-    try:
-        gdf_prov = load_shp_provinsi()
-        prov_data = df_filtered.groupby('PROV').agg(
-            jumlah=('SERIAL','count'),
-            rata_kepuasan=('E1A','mean'),
-        ).reset_index()
-        prov_data.columns = ['NAME_1','jumlah','rata_kepuasan']
-        gdf_merge = gdf_prov.merge(prov_data, on='NAME_1', how='left')
-        gdf_merge['jumlah'] = gdf_merge['jumlah'].fillna(0)
-        gdf_merge['rata_kepuasan'] = gdf_merge['rata_kepuasan'].fillna(0)
+# Mapping nama provinsi dataset → GeoJSON
+PROV_MAP = {'DKI Jakarta': 'Jakarta Raya'}
 
-        m = folium.Map(location=[-2.5, 118], zoom_start=5,
-                      tiles='CartoDB positron', scrollWheelZoom=False)
-        folium.Choropleth(
-            geo_data=gdf_merge.__geo_interface__,
-            name='Responden',
-            data=gdf_merge,
-            columns=['NAME_1','jumlah'],
-            key_on='feature.properties.NAME_1',
-            fill_color='YlGnBu',
-            fill_opacity=0.75,
-            line_opacity=0.4,
-            legend_name='Jumlah Responden',
-            nan_fill_color='#F5F5F5',
-        ).add_to(m)
+def render_peta(df_filtered):
+    geojson = load_geojson_provinsi()
+    
+    df_prov = df_filtered.groupby('Provinsi').size().reset_index(name='Jumlah Responden')
+    df_prov['NAME_1'] = df_prov['Provinsi'].replace(PROV_MAP)
 
-        for _, row in gdf_merge.iterrows():
-            if row['jumlah'] > 0:
-                try:
-                    centroid = row.geometry.centroid
-                    folium.Marker(
-                        location=[centroid.y, centroid.x],
-                        icon=folium.DivIcon(
-                            html=f"""<div style="background:white;
-                                border:1px solid #E8ECF0;border-radius:5px;
-                                padding:2px 6px;font-size:9px;
-                                font-family:Poppins,sans-serif;font-weight:600;
-                                color:{NAVY_DARK};white-space:nowrap;">
-                                {int(row['jumlah'])}</div>""",
-                            icon_size=(45,20), icon_anchor=(22,10)
-                        ),
-                        tooltip=f"{row['NAME_1']}: {int(row['jumlah'])} responden"
-                    ).add_to(m)
-                except: pass
+    m = folium.Map(location=[-2.5, 118], zoom_start=5, tiles='CartoDB positron')
+    folium.Choropleth(
+        geo_data=geojson,
+        name='choropleth',
+        data=df_prov,
+        columns=['NAME_1', 'Jumlah Responden'],
+        key_on='feature.properties.NAME_1',
+        fill_color='YlOrRd',
+        fill_opacity=0.7,
+        line_opacity=0.3,
+        legend_name='Jumlah Responden'
+    ).add_to(m)
 
-        st_folium(m, width=None, height=400, returned_objects=[])
+    for _, row in df_prov.iterrows():
+        for feat in geojson['features']:
+            if feat['properties']['NAME_1'] == row['NAME_1']:
+                geom = feat['geometry']
+                if geom['type'] == 'Polygon':
+                    pts = geom['coordinates'][0]
+                else:
+                    pts = max(geom['coordinates'], key=len)[0]
+                lat = sum(p[1] for p in pts) / len(pts)
+                lon = sum(p[0] for p in pts) / len(pts)
+                folium.Marker(
+                    [lat, lon],
+                    icon=folium.DivIcon(html=f'<div style="font-size:11px;font-weight:bold;background:white;padding:2px 4px;border-radius:3px">{int(row["Jumlah Responden"])}</div>')
+                ).add_to(m)
+                break
 
-    except Exception as e:
-        st.error(f"Peta tidak dapat dimuat: {e}")
-
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-
-    rata_cols = {
-        'Teller': 'rata_teller', 'CS': 'rata_cs', 'ATM': 'rata_atm',
-        'Fisik': 'rata_fisik', 'Sekuriti': 'rata_sekuriti', 'Brand': 'rata_brand',
-    }
-
-    def hitung_nps(df):
-        n = df['G1A'].notna().sum()
-        if n == 0:
-            return 0, 0, 0, 0
-        pct_p = (df['G1A'] >= 9).sum() / n * 100
-        pct_d = (df['G1A'] <= 6).sum() / n * 100
-        return (
-            round(pct_p - pct_d, 1),
-            round(pct_p, 1),
-            round((df['G1A'].between(7, 8)).sum() / n * 100, 1),
-            round(pct_d, 1),
-        )
-
-    nps_score, pct_promoter, pct_passive, pct_detractor = hitung_nps(df_filtered)
+    st_folium(m, width=None, height=400, returned_objects=[])
 
     # ── Dimensi + NPS ────────────────────────────────────────
     col_dim, col_nps = st.columns([3, 2])
@@ -295,6 +261,20 @@ with tab1:
 
     with col_nps:
         st.markdown(f'<p class="section-title">Distribusi NPS Nasabah</p>', unsafe_allow_html=True)
+
+        # Calculate NPS metrics
+        nps_col = 'NPS' if 'NPS' in df_filtered.columns else None
+        if nps_col:
+            promoters = (df_filtered[nps_col] >= 9).sum()
+            passives = ((df_filtered[nps_col] >= 7) & (df_filtered[nps_col] <= 8)).sum()
+            detractors = (df_filtered[nps_col] < 7).sum()
+            total = len(df_filtered)
+            pct_promoter = (promoters / total * 100) if total > 0 else 0
+            pct_passive = (passives / total * 100) if total > 0 else 0
+            pct_detractor = (detractors / total * 100) if total > 0 else 0
+            nps_score = pct_promoter - pct_detractor
+        else:
+            pct_promoter = pct_passive = pct_detractor = nps_score = 0
 
         fig_donut = go.Figure(go.Pie(
             labels=['Promoter', 'Passive', 'Detractor'],
