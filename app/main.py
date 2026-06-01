@@ -281,7 +281,7 @@ with tab1:
         fig_donut = go.Figure(go.Pie(
             labels=['Promoter', 'Passive', 'Detractor'],
             values=[pct_promoter, pct_passive, pct_detractor],
-            hole=0.65,
+            hole=0.50,
             marker=dict(colors=[SUCCESS, WARNING, DANGER],
                        line=dict(color=WHITE, width=3)),
             textinfo='label+percent',
@@ -290,7 +290,7 @@ with tab1:
             pull=[0.04, 0, 0],
         ))
         fig_donut.add_annotation(
-            text=f"<b>{nps_score}</b><br><span style='font-size:10px'>NPS Score</span>",
+            text=f"<b>{nps_score:.1f}</b><br><span style='font-size:10px'>NPS Score</span>",
             x=0.5, y=0.5,
             font=dict(size=26, color=NAVY_DARK, family='Poppins'),
             showarrow=False, align='center'
